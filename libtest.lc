@@ -1,0 +1,27 @@
+work square(n int) int {
+    yield n * n;
+}
+
+work main() int {
+    print("Hello from LazyC's print library!");
+
+    x int = 7;
+    y float = 2.5;
+    ok bool = true;
+    name string = "sandu";
+
+    print("x =", x, "y =", y, "ok =", ok, "name =", name);
+    print("square(6) =", square(6));
+
+    i int = 0;
+    while (i < 5) {
+        print("loop i =", i);
+        i = i + 1;
+    }
+
+    print("escapes:\ttabbed\nnewlined \"quoted\"");
+    print();
+    print("done");
+
+    yield 0;
+}

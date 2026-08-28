@@ -1,0 +1,17 @@
+#Compiled binary
+lazyc
+
+#Object files
+*.o
+
+#Transpiler output
+*.c.out
+out.c
+
+#Test-generated files
+*.bin
+
+#Editor/Os junk
+.vscode/
+*.swp
+.Ds_Store

@@ -1,0 +1,6 @@
+work main() int {
+    c int = '';
+    d int = $5;
+    yield 0;
+}
+/* this comment never closes

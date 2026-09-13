@@ -1,4 +1,0 @@
-work main() int {
-    print("Hello, world!");
-    yield 0;
-}

@@ -1,8 +1,0 @@
-extern work sqrt(x float) float;
-extern work fopen(path string, mode string) ptr;
-extern work fclose(f ptr) int;
-
-work main() int {
- r float = sqrt(16.0);
-    yield 0;
-}

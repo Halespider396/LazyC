@@ -1,4 +1,0 @@
-work main() int {
-    msg int = "hello world";
-    yield 0;
-}

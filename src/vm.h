@@ -4,17 +4,25 @@
 #include "compile.h"
 #include <stdint.h>
 
-typedef enum { VAL_INT, VAL_FLOAT, VAL_BOOL, VAL_CHAR, VAL_STRING, VAL_PTR, VAL_NULL } ValueType;
+typedef enum {
+  VAL_INT,
+  VAL_FLOAT,
+  VAL_BOOL,
+  VAL_CHAR,
+  VAL_STRING,
+  VAL_PTR,
+  VAL_NULL
+} ValueType;
 
 typedef struct {
-    ValueType type;
-    union {
-        int64_t i;
-        double f;
-        int b;
-        const char *s;   /* points into the chunk's string pool; not owned here */
-        int64_t addr;    /* VAL_PTR: index into the VM's flat memory array */
-    } as;
+  ValueType type;
+  union {
+    int64_t i;
+    double f;
+    int b;
+    const char *s; /* points into the chunk's string pool; not owned here */
+    int64_t addr;  /* VAL_PTR: index into the VM's flat memory array */
+  } as;
 } Value;
 
 /* Runs a compiled program to completion.

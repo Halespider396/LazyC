@@ -7,18 +7,21 @@
 /* ============================================================================
  * Memory model
  *
- * `memory` is one flat, never-shrinking array of Values. Slots
+ * `memory` is one flat array of Values, backed by a growable buffer
+ * (`memory_cap`) that only ever grows for capacity reasons. Slots
  * [0, global_slot_count) are the program's globals, permanently.
  * Everything from global_slot_count upward is "frame space": each call
  * gets a fresh region starting at `high_water` (the top of everything
- * touched so far), addressed as memory[fp + slot]. On return, the frame's
- * slots are simply abandoned rather than reclaimed — this is a bump
- * allocator with no reuse, the simplest correct thing to build for a v1
- * VM. Deep or long-running recursion will just keep growing `memory`;
- * there's no stack overflow *detection*, only whatever the process's
- * actual memory limit eventually enforces. Fine for a first version, and
- * easy to swap for a real reclaiming stack later without touching the
- * compiler (it only ever emits fp-relative slot numbers).
+ * currently in use), addressed as memory[fp + slot]. On return,
+ * `high_water` is reset back to the returning frame's own `fp` — since a
+ * function's local slot offsets are fixed at compile time relative to its
+ * own fp, this reclaims exactly that frame's slots (and any nested calls'
+ * frames, which have already reclaimed themselves by the time we get
+ * here). So `memory` behaves like a real stack: it grows during deep call
+ * chains and shrinks back on return, rather than only ever growing.
+ * There's still no stack *overflow detection* — only whatever the
+ * process's actual memory limit eventually enforces — but steady-state
+ * recursion (e.g. a loop of calls) no longer leaks.
  *
  * A separate `stack` is the VM's expression/operand stack — the thing
  * bytecode instructions actually push/pop, distinct from `memory`.
@@ -301,6 +304,7 @@ int vm_run(const CompiledProgram *prog) {
                     break;
                 }
                 vm.call_count--;
+                vm.high_water = vm.fp; /* reclaim this frame's slots (and any nested frames') */
                 vm.ip = (size_t)vm.calls[vm.call_count].ret_ip;
                 vm.fp = vm.calls[vm.call_count].saved_fp;
                 if (has_ret) {

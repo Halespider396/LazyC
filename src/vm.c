@@ -39,6 +39,13 @@ typedef struct {
     struct { int32_t ret_ip; size_t saved_fp; } *calls;
     size_t call_count, call_cap;
 
+    /* Strings created at runtime (concat/substr), as opposed to the
+     * compile-time string pool in `prog->code.strings`. These are heap
+     * buffers the VM owns; they're freed once, all together, at
+     * vm_run's cleanup — never per-call — since a string can outlive the
+     * frame that created it (returned, stored in a global, etc.). */
+    char **owned_strings; size_t owned_count, owned_cap;
+
     size_t ip;
     int had_error;
 } VM;
@@ -62,6 +69,15 @@ static Value pop(VM *vm) {
 static Value peek(VM *vm) {
     if (vm->sp == 0) { rt_error(vm, "operand stack underflow"); Value z = {VAL_NULL, {0}}; return z; }
     return vm->stack[vm->sp - 1];
+}
+
+/* Register a heap buffer (already malloc'd, NUL-terminated) created at
+ * runtime so the VM frees it at shutdown — see the owned_strings comment
+ * on the VM struct above. */
+static const char *vm_own_string(VM *vm, char *buf) {
+    GROW(vm->owned_strings, vm->owned_count, vm->owned_cap, char *);
+    vm->owned_strings[vm->owned_count++] = buf;
+    return buf;
 }
 
 static void ensure_memory(VM *vm, size_t index) {
@@ -365,6 +381,33 @@ int vm_run(const CompiledProgram *prog) {
                 else push(&vm, vint(a.as.i > b.as.i ? a.as.i : b.as.i));
                 break;
             }
+            case OP_CONCAT: {
+                Value b = pop(&vm), a = pop(&vm);
+                size_t la = strlen(a.as.s), lb = strlen(b.as.s);
+                char *buf = malloc(la + lb + 1);
+                memcpy(buf, a.as.s, la);
+                memcpy(buf + la, b.as.s, lb);
+                buf[la + lb] = '\0';
+                Value v; v.type = VAL_STRING; v.as.s = vm_own_string(&vm, buf);
+                push(&vm, v);
+                break;
+            }
+            case OP_SUBSTR: {
+                Value lenv = pop(&vm), startv = pop(&vm), sv = pop(&vm);
+                const char *s = sv.as.s;
+                int64_t slen = (int64_t)strlen(s);
+                int64_t start = startv.as.i, len = lenv.as.i;
+                if (start < 0) start = 0;
+                if (start > slen) start = slen;
+                if (len < 0) len = 0;
+                if (start + len > slen) len = slen - start;
+                char *buf = malloc((size_t)len + 1);
+                memcpy(buf, s + start, (size_t)len);
+                buf[len] = '\0';
+                Value v; v.type = VAL_STRING; v.as.s = vm_own_string(&vm, buf);
+                push(&vm, v);
+                break;
+            }
 
             case OP_HALT:
                 if (vm.sp > 0) result = vm.stack[vm.sp - 1];
@@ -376,6 +419,8 @@ int vm_run(const CompiledProgram *prog) {
     free(vm.memory);
     free(vm.stack);
     free(vm.calls);
+    for (size_t i = 0; i < vm.owned_count; i++) free(vm.owned_strings[i]);
+    free(vm.owned_strings);
 
     if (vm.had_error) return -1;
     if (result.type == VAL_FLOAT) return (int)result.as.f;

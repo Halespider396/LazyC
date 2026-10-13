@@ -133,6 +133,19 @@ static void emit_expr(FILE *out, const Expr *e) {
                     emit_expr(out, e->as.call.args[1]); fputc(')', out);
                     break;
                 }
+                if (strcmp(name, "concat") == 0) {
+                    fputs("__lazyc_concat(", out);
+                    emit_expr(out, e->as.call.args[0]); fputs(", ", out);
+                    emit_expr(out, e->as.call.args[1]); fputc(')', out);
+                    break;
+                }
+                if (strcmp(name, "substr") == 0) {
+                    fputs("__lazyc_substr(", out);
+                    emit_expr(out, e->as.call.args[0]); fputs(", ", out);
+                    emit_expr(out, e->as.call.args[1]); fputs(", ", out);
+                    emit_expr(out, e->as.call.args[2]); fputc(')', out);
+                    break;
+                }
             }
             emit_expr(out, e->as.call.callee);
             fputc('(', out);
@@ -336,7 +349,27 @@ int codegen_c_write(const Program *prog, FILE *out) {
           "    default: __lazyc_p_ptr)(x)\n", out);
     fputs("#define __lazyc_min(a,b) ((a) < (b) ? (a) : (b))\n", out);
     fputs("#define __lazyc_max(a,b) ((a) > (b) ? (a) : (b))\n", out);
-    fputs("#define __lazyc_abs(x) _Generic((x), int: abs, double: fabs)(x)\n\n", out);
+    fputs("#define __lazyc_abs(x) _Generic((x), int: abs, double: fabs)(x)\n", out);
+    /* concat/substr create new strings, so unlike the macros above they need
+     * real heap allocation — manual-memory philosophy: the caller owns the
+     * returned buffer and is responsible for freeing it, same as any other
+     * malloc'd pointer in LazyC's C backend. */
+    fputs("static __LAZYC_UNUSED char *__lazyc_concat(const char *a, const char *b){\n"
+          "    size_t la = strlen(a), lb = strlen(b);\n"
+          "    char *buf = malloc(la + lb + 1);\n"
+          "    memcpy(buf, a, la); memcpy(buf + la, b, lb); buf[la + lb] = '\\0';\n"
+          "    return buf;\n"
+          "}\n", out);
+    fputs("static __LAZYC_UNUSED char *__lazyc_substr(const char *s, int start, int len){\n"
+          "    int slen = (int)strlen(s);\n"
+          "    if (start < 0) start = 0;\n"
+          "    if (start > slen) start = slen;\n"
+          "    if (len < 0) len = 0;\n"
+          "    if (start + len > slen) len = slen - start;\n"
+          "    char *buf = malloc((size_t)len + 1);\n"
+          "    memcpy(buf, s + start, (size_t)len); buf[len] = '\\0';\n"
+          "    return buf;\n"
+          "}\n\n", out);
 
     /* Forward tag declarations for every struct, so pointer fields can
      * reference a struct defined later in the file (or itself). */

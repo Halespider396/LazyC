@@ -297,7 +297,8 @@ static Type infer_binary(Checker *c, Expr *e) {
 
 static int is_reserved_builtin_name(const char *name) {
     return strcmp(name, "print") == 0 || strcmp(name, "strlen") == 0 || strcmp(name, "streq") == 0 ||
-           strcmp(name, "abs") == 0 || strcmp(name, "min") == 0 || strcmp(name, "max") == 0;
+           strcmp(name, "abs") == 0 || strcmp(name, "min") == 0 || strcmp(name, "max") == 0 ||
+           strcmp(name, "concat") == 0 || strcmp(name, "substr") == 0;
 }
 
 /* print(...) is variadic and accepts any number of arguments of any
@@ -322,20 +323,23 @@ static Type infer_print_call(Checker *c, Expr *e) {
     return mk_prim(T_VOID);
 }
 
-/* Fixed-arity builtins shared by both backends: strlen/streq operate on
- * `string`; abs/min/max are polymorphic over int/float (mirroring the
- * same numeric-coercion rule infer_binary uses for arithmetic). */
+/* Fixed-arity builtins shared by both backends: strlen/streq/concat operate
+ * on `string` (substr too, plus two `int`s); abs/min/max are polymorphic
+ * over int/float (mirroring the same numeric-coercion rule infer_binary
+ * uses for arithmetic). */
 static Type infer_fixed_builtin_call(Checker *c, Expr *e, const char *name) {
-    size_t want = (strcmp(name, "strlen") == 0 || strcmp(name, "abs") == 0) ? 1 : 2;
+    size_t want = (strcmp(name, "strlen") == 0 || strcmp(name, "abs") == 0) ? 1
+                : (strcmp(name, "substr") == 0) ? 3
+                : 2;
     if (e->as.call.arg_count != want) {
         sema_error(c, e->line, e->col, "'%s' expects %zu argument%s, got %zu",
                    name, want, want == 1 ? "" : "s", e->as.call.arg_count);
     }
-    Type args[2] = { mk_error(), mk_error() };
-    for (size_t i = 0; i < e->as.call.arg_count && i < 2; i++) args[i] = infer_expr(c, e->as.call.args[i]);
-    for (size_t i = 2; i < e->as.call.arg_count; i++) infer_expr(c, e->as.call.args[i]); /* extras: still check internally */
+    Type args[3] = { mk_error(), mk_error(), mk_error() };
+    for (size_t i = 0; i < e->as.call.arg_count && i < 3; i++) args[i] = infer_expr(c, e->as.call.args[i]);
+    for (size_t i = 3; i < e->as.call.arg_count; i++) infer_expr(c, e->as.call.args[i]); /* extras: still check internally */
 
-    if (strcmp(name, "strlen") == 0 || strcmp(name, "streq") == 0) {
+    if (strcmp(name, "strlen") == 0 || strcmp(name, "streq") == 0 || strcmp(name, "concat") == 0) {
         for (size_t i = 0; i < want && i < e->as.call.arg_count; i++) {
             if (is_error(&args[i])) continue;
             if (!(is_plain(&args[i]) && strcmp(args[i].name, T_STRING) == 0)) {
@@ -344,7 +348,26 @@ static Type infer_fixed_builtin_call(Checker *c, Expr *e, const char *name) {
                            "'%s' expects a 'string' argument, got '%s'", name, b);
             }
         }
-        return strcmp(name, "strlen") == 0 ? mk_prim(T_INT) : mk_prim(T_BOOL);
+        if (strcmp(name, "strlen") == 0) return mk_prim(T_INT);
+        if (strcmp(name, "streq") == 0) return mk_prim(T_BOOL);
+        return mk_prim(T_STRING); /* concat */
+    }
+
+    if (strcmp(name, "substr") == 0) {
+        if (!is_error(&args[0]) && !(is_plain(&args[0]) && strcmp(args[0].name, T_STRING) == 0)) {
+            char b[64]; type_to_str(&args[0], b, sizeof(b));
+            sema_error(c, e->as.call.args[0]->line, e->as.call.args[0]->col,
+                       "'substr' expects a 'string' as argument 1, got '%s'", b);
+        }
+        for (size_t i = 1; i <= 2 && i < e->as.call.arg_count; i++) {
+            if (is_error(&args[i])) continue;
+            if (!(is_plain(&args[i]) && strcmp(args[i].name, T_INT) == 0)) {
+                char b[64]; type_to_str(&args[i], b, sizeof(b));
+                sema_error(c, e->as.call.args[i]->line, e->as.call.args[i]->col,
+                           "'substr' expects an 'int' as argument %zu, got '%s'", i + 1, b);
+            }
+        }
+        return mk_prim(T_STRING);
     }
 
     /* abs/min/max: numeric, int/float mixing allowed like ordinary arithmetic */
@@ -370,7 +393,8 @@ static Type infer_call(Checker *c, Expr *e) {
     const char *name = e->as.call.callee->as.ident;
     if (strcmp(name, "print") == 0) return infer_print_call(c, e);
     if (strcmp(name, "strlen") == 0 || strcmp(name, "streq") == 0 ||
-        strcmp(name, "abs") == 0 || strcmp(name, "min") == 0 || strcmp(name, "max") == 0)
+        strcmp(name, "abs") == 0 || strcmp(name, "min") == 0 || strcmp(name, "max") == 0 ||
+        strcmp(name, "concat") == 0 || strcmp(name, "substr") == 0)
         return infer_fixed_builtin_call(c, e, name);
 
     FuncSig *fn = find_func(c, name);

@@ -402,6 +402,19 @@ static int compile_builtin_call(Compiler *c, const Expr *e, const char *name) {
         chunk_emit_op(&c->out->code, strcmp(name, "min") == 0 ? OP_MIN : OP_MAX);
         return 1;
     }
+    if (strcmp(name, "concat") == 0) {
+        compile_expr_value(c, e->as.call.args[0]);
+        compile_expr_value(c, e->as.call.args[1]);
+        chunk_emit_op(&c->out->code, OP_CONCAT);
+        return 1;
+    }
+    if (strcmp(name, "substr") == 0) {
+        compile_expr_value(c, e->as.call.args[0]); /* s */
+        compile_expr_value(c, e->as.call.args[1]); /* start */
+        compile_expr_value(c, e->as.call.args[2]); /* len */
+        chunk_emit_op(&c->out->code, OP_SUBSTR);
+        return 1;
+    }
     return 0;
 }
 

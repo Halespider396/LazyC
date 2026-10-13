@@ -69,6 +69,14 @@ typedef enum {
     OP_ABS,           /*            -> pop v; push |v| (same numeric type) */
     OP_MIN,           /*            -> pop b, a; push the smaller           */
     OP_MAX,           /*            -> pop b, a; push the larger            */
+    OP_CONCAT,        /*            -> pop b, a (VAL_STRING); push a new
+                        * VAL_STRING that is a followed by b. The VM owns
+                        * the new buffer and frees it at shutdown.          */
+    OP_SUBSTR,        /*            -> pop len, start (VAL_INT), s (VAL_STRING);
+                        * push a new VAL_STRING = s[start, start+len), with
+                        * start/len clamped into range (out-of-range yields
+                        * an empty string, never an error). Owned/freed the
+                        * same way as OP_CONCAT's result.                   */
 
     OP_HALT,
 } OpCode;
